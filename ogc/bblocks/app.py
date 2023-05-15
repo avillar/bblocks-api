@@ -11,12 +11,21 @@ from fastapi.responses import RedirectResponse
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+from accept_types import get_best_match
+
 REGISTER_BASE_URL = os.environ.get('BBLOCKS_REGISTER_BASE_URL', 'https://opengeospatial.github.io/bblocks/')
 if REGISTER_BASE_URL[-1] != '/':
     REGISTER_BASE_URL += '/'
 CATALOG_URL = REGISTER_BASE_URL + 'register.json'
 DEFAULT_MEDIATYPE = 'text/html'
 ROOT_PATH = os.environ.get('BBLOCKS_ROOT_PATH', '')
+ACCEPTED_MEDIATYPES = [
+    'text/html',
+    'text/markdown',
+    'application/ld+json',
+    'application/schema+json',
+    'application/schema+yaml',
+]
 
 bblocks = {}
 bblock_ids = None
@@ -57,15 +66,20 @@ async def bblock_list():
 @app.get('/bb/{bblock_id}')
 async def view_bblock(bblock_id,
                       _mediatype: str = None,
-                      _mediatype_header: Annotated[str | None, Header()] = None):
+                      accept: Annotated[str | None, Header()] = None):
     bblock = bblocks.get(bblock_id)
     if not bblock:
         raise HTTPException(status_code=404, detail='Building block id not found')
 
-    if not _mediatype:
-        _mediatype = _mediatype_header
-    if not _mediatype:
+    if not _mediatype and not accept:
         _mediatype = DEFAULT_MEDIATYPE
+    elif _mediatype:
+        if _mediatype not in ACCEPTED_MEDIATYPES:
+            raise HTTPException(status_code=400, detail='Unsupported media type')
+    elif accept:
+        _mediatype = get_best_match(accept, available_types=ACCEPTED_MEDIATYPES)
+        if not _mediatype:
+            raise HTTPException(status_code=400, detail='Unsupported media type')
 
     bblock_path = bblock_id_to_path(bblock_id)
 
