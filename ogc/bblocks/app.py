@@ -7,7 +7,9 @@ import requests
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Header, HTTPException
-from starlette.responses import RedirectResponse
+from fastapi.responses import RedirectResponse
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 REGISTER_BASE_URL = os.environ.get('BBLOCKS_REGISTER_BASE_URL', 'https://opengeospatial.github.io/bblocks/')
 if REGISTER_BASE_URL[-1] != '/':
@@ -19,19 +21,28 @@ ROOT_PATH = os.environ.get('BBLOCKS_ROOT_PATH', '')
 bblocks = {}
 bblock_ids = None
 
+scheduler = AsyncIOScheduler()
+
 
 def bblock_id_to_path(bblock_id: str) -> str:
     return '/'.join(bblock_id.split('.')[1:])
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Load BBlocks
+@scheduler.scheduled_job('interval', hours=1)
+async def update_building_blocks():
+    print('Updating building blocks')
     r = requests.get(CATALOG_URL)
     r.raise_for_status()
     global bblocks, bblock_ids
     bblocks = {bb['itemIdentifier']: bb for bb in r.json()}
     bblock_ids = list(sorted(bblocks.keys()))
+    print(f"Found {len(bblock_ids)} building blocks")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await update_building_blocks()
+    scheduler.start()
     yield
 
 
