@@ -14,6 +14,7 @@ if REGISTER_BASE_URL[-1] != '/':
     REGISTER_BASE_URL += '/'
 CATALOG_URL = REGISTER_BASE_URL + 'register.json'
 DEFAULT_MEDIATYPE = 'text/html'
+ROOT_PATH = os.environ.get('BBLOCKS_ROOT_PATH', '')
 
 bblocks = {}
 bblock_ids = None
@@ -34,7 +35,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, root_path=ROOT_PATH)
 
 
 @app.get('/list')
