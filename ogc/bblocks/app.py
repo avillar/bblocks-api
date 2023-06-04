@@ -25,7 +25,17 @@ ACCEPTED_MEDIATYPES = [
     'application/ld+json',
     'application/schema+json',
     'application/schema+yaml',
+    'application/json',
 ]
+SCHEMA_MEDIATYPES = {
+    'application/schema+json': 'application/json',
+    'application/schema+yaml': 'application/yaml',
+}
+DOC_MEDIATYPES = {
+    'text/html': 'slate',
+    'text/markdown': 'markdown',
+    'application/json': 'json-full',
+}
 
 bblocks = {}
 bblock_ids = None
@@ -57,6 +67,13 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan, root_path=ROOT_PATH)
 
+@app.get('/')
+async def index():
+    return {
+        'name': 'bblocks-api',
+        'accepted-mediatypes': ACCEPTED_MEDIATYPES
+    }
+
 
 @app.get('/list')
 async def bblock_list():
@@ -68,6 +85,8 @@ async def view_bblock(bblock_id,
                       _mediatype: str = None,
                       accept: Annotated[str | None, Header()] = None):
     bblock = bblocks.get(bblock_id)
+    import json
+    print(json.dumps(bblock, indent=2))
     if not bblock:
         raise HTTPException(status_code=404, detail='Building block id not found')
 
@@ -83,22 +102,21 @@ async def view_bblock(bblock_id,
 
     bblock_path = bblock_id_to_path(bblock_id)
 
-    if _mediatype == 'text/html':
-        return RedirectResponse(f"{REGISTER_BASE_URL}generateddocs/slate-build/{bblock_path}/")
-    elif _mediatype == 'text/markdown':
-        return RedirectResponse(f"{REGISTER_BASE_URL}generateddocs/markdown/{bblock_path}/index.md")
+    if _mediatype in DOC_MEDIATYPES:
+        url = bblock.get('documentation', {}).get(DOC_MEDIATYPES[_mediatype], {}).get('url')
+        if url:
+            return RedirectResponse(url)
+        else:
+            raise HTTPException(status_code=404, detail=f'Documentation for type {_mediatype} not found')
+
     elif _mediatype.startswith('application/schema+'):
-        subtype = _mediatype[len('application/schema+'):]
-        schema = None
-        available_schemas = bblock.get('schema')
-        if isinstance(available_schemas, str) and available_schemas.endswith('.' + subtype):
-            schema = available_schemas
-        elif isinstance(available_schemas, Sequence):
-            schema = next((s for s in available_schemas if s.endswith('.' + subtype)), None)
+        subtype = SCHEMA_MEDIATYPES.get(_mediatype)
+        schema = bblock.get('schema', {}).get(subtype)
         if schema:
             return RedirectResponse(schema)
         else:
             raise HTTPException(status_code=404, detail=f'Schema for type {subtype} not found')
+
     elif _mediatype == 'application/ld+json':
         ld_context = bblock.get('ldContext')
         if ld_context:
